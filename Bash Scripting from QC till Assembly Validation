@@ -1,0 +1,95 @@
+## 1. Creation and location of files and folders
+        READS="/home/sandeeplab1/Soumyadutta_Project/Trimmed_Rerun"
+        BOWTIE2_INDEX="/home/sandeeplab1/Soumyadutta_Project/Index"
+        Mapping_Output="/home/sandeeplab1/Soumyadutta_Project/Mapped_NewSam"
+        Bam_out="/home/sandeeplab1/Soumyadutta_Project/Mapped_NewSam/BAM_files"
+        Fastq_map="/home/sandeeplab1/Soumyadutta_Project/Mapped_NewSam/BAM_files/fastq"
+        Re_Assem="/home/sandeeplab1/Soumyadutta_Project/New_Assembly_fasta"
+        BOWTIE2_ASSEMBLY="/home/sandeeplab1/Soumyadutta_Project/Index_NewSam_Assembly"
+        Thread=30
+
+
+#### 2. Loop for each samples
+for R1 in $READS/*_1.fq.gz
+   do
+         R2=$(echo $R1|sed 's/_1./_2./')
+         base=$(basename $R1)
+         Output=`echo $base|sed 's/Trimmed_1.fq.gz//'`; s=".sam"
+         OutM=$(echo $Output | sed 's/_//')
+         echo  -e "\n\n $OutM processing started $R1 \t $R2 \t $base \t $Output"
+
+        ls $BOWTIE2_INDEX|cut -d "." -f 1|sort|uniq|while read file;
+                do
+                        G=$(echo $file|sed 's/Triticum_//');
+                        echo -e  "Wheat genome file name : $file $index \t basename: $G" >>$Mapping_Output/$OutM"_map.log"
+                        echo "bowtie2 -x ${BOWTIE2_INDEX}/$file -1 ${R1} -2 ${R2} -S $Mapping_Output/$Output$G$s --threads $Thread"
+                        (bowtie2 -x ${BOWTIE2_INDEX}/$file -1 ${R1} -2 ${R2} -S $Mapping_Output/$Output$G$s --threads $Thread) 2>>$Mapping_Output/$OutM"_map.log"
+
+                        ## SAM to BAM
+                        bam=$Bam_out/$Output$G".bam"
+                        echo -e "\n Basename of Genome mapping file :$bam "
+                        echo "samtools sort $Mapping_Output/$Output$G$s -O BAM -o $bam -@ $Thread"
+                        samtools sort $Mapping_Output/$Output$G$s -O BAM -o $bam -@ $Thread
+                        rm -rf $Mapping_Output/$Output$G$s
+                done
+
+          echo -e "\n\n ### Read mapping of sample: $OutM for 11 genome done !!!"
+
+
+ ## 2.1 BAM Merging and mapped read  extraction
+                echo $Bam_out/$Output
+               echo "samtools merge $Bam_out/"Merged_"$OutM".bam" $Bam_out/$Output* -@ $Thread"
+                samtools merge $Bam_out/"Merged_"$OutM".bam" $Bam_out/$Output* -@ $Thread
+                rm $Bam_out/$Output*
+        ## 2.2 Deduplication
+                echo "java -jar /Bioinfo/picard-2.21.4/picard.jar MarkDuplicates INPUT=$Bam_out/"Merged_"$OutM".bam" OUTPUT=$Bam_out/"Merged_"$OutM"_mdup.bam" METRICS_FILE=$Bam_out/"Merged_"$OutM"_mdup.>
+
+                java -jar /Bioinfo/picard-2.21.4/picard.jar MarkDuplicates INPUT=$Bam_out/"Merged_"$OutM".bam" OUTPUT=$Bam_out/"Merged_"$OutM"_mdup.bam" METRICS_FILE=$Bam_out/"Merged_"$OutM"_mdup.txt" R>
+                echo "samtools view -F 1024 $Bam_out/"Merged_"$OutM"_mdup.bam -o $Bam_out/"Merged_"$OutM"_rmmdup.bam -@ $Thread"
+                samtools view -F 1024 $Bam_out/Merged_"$OutM"_mdup.bam -o $Bam_out/Merged_"$OutM"_rmmdup.bam -@ $Thread
+## 2.1 BAM Merging and mapped read  extraction
+                echo $Bam_out/$Output
+               echo "samtools merge $Bam_out/"Merged_"$OutM".bam" $Bam_out/$Output* -@ $Thread"
+                samtools merge $Bam_out/"Merged_"$OutM".bam" $Bam_out/$Output* -@ $Thread
+                rm $Bam_out/$Output*
+        ## 2.2 Deduplication
+                echo "java -jar /Bioinfo/picard-2.21.4/picard.jar MarkDuplicates INPUT=$Bam_out/"Merged_"$OutM".bam" OUTPUT=$Bam_out/"Merged_"$OutM"_mdup.bam" METRICS_FILE=$Bam_out/"Merged_"$OutM"_mdup.>
+
+                java -jar /Bioinfo/picard-2.21.4/picard.jar MarkDuplicates INPUT=$Bam_out/"Merged_"$OutM".bam" OUTPUT=$Bam_out/"Merged_"$OutM"_mdup.bam" METRICS_FILE=$Bam_out/"Merged_"$OutM"_mdup.txt" R>
+                echo "samtools view -F 1024 $Bam_out/"Merged_"$OutM"_mdup.bam -o $Bam_out/"Merged_"$OutM"_rmmdup.bam -@ $Thread"
+                samtools view -F 1024 $Bam_out/Merged_"$OutM"_mdup.bam -o $Bam_out/Merged_"$OutM"_rmmdup.bam -@ $Thread
+
+                OUT_R1=$Fastq_map/$Output"mapped_R1.fastq"
+                OUT_R2=$Fastq_map/$Output"mapped_R2.fastq"
+                echo ${OUT_R1} ${OUT_R2}
+                echo "samtools fastq -f 2 -1 ${OUT_R1} -2 ${OUT_R2} -0 /dev/null -n $Bam_out/"Merged_"$OutM"_rmmdup.bam" -@ $Thread"
+                samtools fastq -f 2 -1 ${OUT_R1} -2 ${OUT_R2} -0 /dev/null -n $Bam_out/"Merged_"$OutM"_rmmdup.bam" -@ $Thread
+
+
+        ## 2.3 Assembly & Evaluation
+                echo -e "##### Assembly and evaluation ############# for sample: $OutM "
+                a="SPADES"
+                echo "spades.py --careful -1 ${OUT_R1} -2 ${OUT_R2} -o Assembly/$Output$a -t $Thread"
+                spades.py --careful -1 ${OUT_R1} -2 ${OUT_R2} -o Assembly/$Output$a -t $Thread
+
+                echo "quast.py -o QUSAT/q_$OutM Assembly/$Output$a/"scaffolds.fasta" "
+                quast.py -o QUSAT/$OutM Assembly/$Output$a/"scaffolds.fasta"
+
+
+        ## 2.4 Re-Mapping for Validation
+                echo -e "##### Remapping of reads of sample: $OutM over generated assembly"
+                cp Assembly/$Output$a/"scaffolds.fasta" $Re_Assem/$Output"Assembly.fasta"
+
+                #indexing using bowtie
+                echo "bowtie2-build $Re_Assem/$Output"Assembly.fasta" $BOWTIE2_ASSEMBLY/$Output"Assembly" "
+
+                bowtie2-build $Re_Assem/$Output"Assembly.fasta" $BOWTIE2_ASSEMBLY/$Output"Assembly"
+
+                OUT=$(echo $OUT_R1|sed 's/_R1.fastq/.sam/'); Rebase=$(basename $OUT)
+               echo -e ${OUT} "\t" $Rebase;
+                echo bowtie2 -x $BOWTIE2_ASSEMBLY/$Output"Assembly" -1 ${OUT_R1} -2 ${OUT_R2} -S ${OUT} --threads $Thread
+                rm $BOWTIE2_ASSEMBLY/$OutM"_remap.log"
+                (bowtie2 -x $BOWTIE2_ASSEMBLY/$Output"Assembly" -1 ${OUT_R1} -2 ${OUT_R2} -S $BOWTIE2_ASSEMBLY/$Rebase --threads $Thread) 2>$BOWTIE2_ASSEMBLY/$OutM"_remap.log"
+
+                rm $BOWTIE2_ASSEMBLY/$Rebase
+done
